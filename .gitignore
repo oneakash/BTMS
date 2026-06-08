@@ -1,0 +1,18 @@
+# Hyperledger Fabric test network and downloaded binaries
+fabric-samples/
+
+# Node.js and React dependencies
+node_modules/
+npm-debug.log
+frontend/build/
+
+# Backend Wallets (Do not push cryptographic certificates to GitHub!)
+backend/wallet/
+backend/keystore/
+
+# Environment Variables
+.env
+.env.local
+
+# OS generated files
+.DS_Store
