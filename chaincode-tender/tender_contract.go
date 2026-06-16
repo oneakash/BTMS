@@ -192,8 +192,8 @@ type Tender struct {
 	Deadline   string  `json:"deadline"`
 	Status     string  `json:"status"` // "Published", "Awarded"
 	DocHash    string  `json:"docHash"`
-	WinnerID   string  `json:"winnerId,omitempty"`
-	WinningBid float64 `json:"winningBid,omitempty"`
+	WinnerID   string  `json:"winnerId"`
+	WinningBid float64 `json:"winningBid"`
 }
 
 // Bid structure
