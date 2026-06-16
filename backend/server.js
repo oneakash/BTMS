@@ -51,9 +51,12 @@ async function getContract() {
         client,
         identity: await newIdentity(),
         signer: await newSigner(),
-        evaluateOptions: () => { return { deadline: Date.now() + 5000 }; },
-        endorseOptions: () => { return { deadline: Date.now() + 15000 }; },
-        submitOptions: () => { return { deadline: Date.now() + 5000 }; },
+        // evaluateOptions: () => { return { deadline: Date.now() + 5000 }; },
+        // endorseOptions: () => { return { deadline: Date.now() + 15000 }; },
+        // submitOptions: () => { return { deadline: Date.now() + 5000 }; },
+        evaluateOptions: () => { return { deadline: Date.now() + 60000 }; },
+        endorseOptions: () => { return { deadline: Date.now() + 60000 }; }, 
+        submitOptions: () => { return { deadline: Date.now() + 60000 }; },
         commitStatusOptions: () => { return { deadline: Date.now() + 60000 }; },
     });
     const network = gateway.getNetwork(channelName);
@@ -207,6 +210,34 @@ app.post('/api/tenders/:id/evaluate', async (req, res) => {
     } catch (error) {
         console.error('Error evaluating tender:', error);
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 6. Get All Tenders (Reads from Ledger)
+app.get('/api/tenders', async (req, res) => {
+    try {
+        console.log(`[API] Fetching all active tenders from the ledger...`);
+        const { contract, gateway, client } = await getContract();
+
+        try {
+            const resultBytes = await contract.evaluateTransaction('GetAllTenders');
+            const resultString = new TextDecoder().decode(resultBytes);
+            
+            // Handle cases where the ledger might be completely empty
+            const tenders = resultString ? JSON.parse(resultString) : [];
+            
+            res.status(200).json({ 
+                success: true, 
+                count: tenders.length, 
+                tenders: tenders 
+            });
+        } finally {
+            gateway.close();
+            client.close();
+        }
+    } catch (error) {
+        console.error('Error fetching all tenders:', error);
+        res.status(500).json({ success: false, error: "Failed to read from the blockchain ledger." });
     }
 });
 
