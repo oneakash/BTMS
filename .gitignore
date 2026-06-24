@@ -10,9 +10,25 @@ frontend/build/
 backend/wallet/
 backend/keystore/
 
+# In your root .gitignore
+
+# Frontend env files
+frontend/.env
+frontend/.env.local
+frontend/.env.development
+frontend/.env.production
+
+# Backend env files
+backend/.env
+backend/.env.local
+
 # Environment Variables
 .env
 .env.local
+
+# Ignore all .env files anywhere in the project
+**/.env
+**/.env.*
 
 # OS generated files
 .DS_Store
