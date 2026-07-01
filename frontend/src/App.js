@@ -73,6 +73,23 @@ function App() {
 
   const t = translations[lang];
 
+  const handleServerLogin = async (selectedRole) => {
+    try {
+      const res = await axios.post('http://localhost:5000/api/auth/login', { role: selectedRole });
+      // Save the token to local storage securely
+      localStorage.setItem('btms_token', res.data.token);
+      setUserRole(selectedRole);
+      setActiveTab('view');
+    } catch (err) {
+      console.error("Login failed", err);
+    }
+  };
+  const handleLogout = () => {
+    localStorage.removeItem('btms_token');
+    setUserRole(null);
+    setStatus({message:''});
+  };  
+
   // IPFS Web3 File Upload Function
   const handleFileUpload = async (e, formType) => {
     const file = e.target.files[0];
@@ -119,11 +136,14 @@ function App() {
     e.preventDefault();
     if (!tenderForm.docHash) return setStatus({ message: "Please upload a document.", isError: true });
     setStatus({ message: 'Processing on ledger...', isError: false });
+    const token = localStorage.getItem('btms_token');
+    const config = { headers: { Authorization: `Bearer ${token}` } };
     try {
-      const res = await axios.post('http://localhost:5000/api/tenders', tenderForm);
+      const res = await axios.post('http://localhost:5000/api/tenders', tenderForm, config);
       setStatus({ message: `${t.success} ${res.data.message}`, isError: false });
     } catch (err) {
-      setStatus({ message: `${t.error} ${err.message}`, isError: true });
+      const errorMsg = err.response?.data?.message || err.message;
+      setStatus({ message: `${t.error} ${errorMsg}`, isError: true });
     }
   };
 
@@ -131,20 +151,25 @@ function App() {
     e.preventDefault();
     if (!bidForm.docHash) return setStatus({ message: "Please upload your bid document.", isError: true });
     setStatus({ message: 'Processing on ledger...', isError: false });
+    const token = localStorage.getItem('btms_token');
+    const config = { headers: { Authorization: `Bearer ${token}` } };
     try {
-      const res = await axios.post('http://localhost:5000/api/bids', bidForm);
+      const res = await axios.post('http://localhost:5000/api/bids', bidForm, config);
       setStatus({ message: `${t.success} ${res.data.message}`, isError: false });
     } catch (err) {
-      setStatus({ message: `${t.error} ${err.message}`, isError: true });
+      const errorMsg = err.response?.data?.message || err.message;
+      setStatus({ message: `${t.error} ${errorMsg}`, isError: true });
     }
   };
 
   const handleEvaluate = async (e) => {
     e.preventDefault();
     setStatus({ message: 'Smart Contract executing...', isError: false });
+    const token = localStorage.getItem('btms_token');
+    const config = { headers: { Authorization: `Bearer ${token}` } };
     try {
-      const res = await axios.post(`http://localhost:5000/api/tenders/${evalForm.tenderId}/evaluate`);
-      const tenderRes = await axios.get(`http://localhost:5000/api/tenders/${evalForm.tenderId}`);
+      const res = await axios.post(`http://localhost:5000/api/tenders/${evalForm.tenderId}/evaluate`, {}, config);
+      const tenderRes = await axios.get(`http://localhost:5000/api/tenders/${evalForm.tenderId}`, config);
       setStatus({ message: `${t.success} ${res.data.message} Winner: ${tenderRes.data.tender.winnerId}`, isError: false });
     } catch (err) {
       setStatus({ message: `${t.error} ${err.message}`, isError: true });
@@ -163,10 +188,10 @@ function App() {
         
         <h3>{t.loginTitle}</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
-          <button onClick={() => { setUserRole('admin'); setActiveTab('view'); }} style={{ padding: '15px', fontSize: '16px', background: '#28a745', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '5px' }}>
+          <button onClick={() => handleServerLogin('admin')} style={{ padding: '15px', fontSize: '16px', background: '#28a745', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '5px' }}>
             🏢 {t.roleAdmin}
           </button>
-          <button onClick={() => { setUserRole('vendor'); setActiveTab('view'); }} style={{ padding: '15px', fontSize: '16px', background: '#17a2b8', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '5px' }}>
+          <button onClick={() => handleServerLogin('vendor')} style={{ padding: '15px', fontSize: '16px', background: '#17a2b8', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '5px' }}>
             🤝 {t.roleVendor}
           </button>
         </div>

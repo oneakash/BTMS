@@ -5,6 +5,8 @@ const grpc = require('@grpc/grpc-js');
 const { connect, signers } = require('@hyperledger/fabric-gateway');
 const fs = require('fs');
 const path = require('path');
+const jwt = require('jsonwebtoken');
+const { verifyRole, JWT_SECRET } = require('./authMiddleware');
 
 const app = express();
 app.use(cors());
@@ -67,9 +69,19 @@ async function getContract() {
 //                 API ROUTES
 // ==========================================
 
+// Login Route to generate the JWT Badge
+app.post('/api/auth/login', (req, res) => {
+  const { role } = req.body; // 'admin' or 'vendor'
+  
+  // Issue a token containing their role that expires in 2 hours
+  const token = jwt.sign({ role: role }, JWT_SECRET, { expiresIn: '2h' });
+  
+  res.json({ success: true, token, role });
+});
+
 // 1. Publish a new Tender (Writes to Ledger)
-app.post('/api/tenders', async (req, res) => {
-    try {
+app.post('/api/tenders', verifyRole('admin'), async (req, res) => {
+        try {
         const { tenderId, title, budget, deadline, docHash } = req.body;
         console.log(`[API] Received request to publish tender: ${tenderId}`);
 
@@ -138,8 +150,8 @@ app.get('/api/tenders/:id', async (req, res) => {
 });
 
 // 3. Submit a Bid (Writes to Ledger)
-app.post('/api/bids', async (req, res) => {
-    try {
+app.post('/api/bids', verifyRole('vendor'), async (req, res) => {
+        try {
         const { bidId, tenderId, vendorId, bidAmount, docHash } = req.body;
         const timestamp = new Date().toISOString();
         console.log(`[API] Received bid ${bidId} for tender ${tenderId}`);
@@ -189,8 +201,8 @@ app.get('/api/tenders/:id/bids', async (req, res) => {
 });
 
 // 5. Evaluate Bids and Award Contract (Writes to Ledger)
-app.post('/api/tenders/:id/evaluate', async (req, res) => {
-    try {
+app.post('/api/tenders/:id/evaluate', verifyRole('admin'), async (req, res) => {
+        try {
         const tenderId = req.params.id;
         console.log(`[API] Triggering smart contract evaluation for: ${tenderId}`);
 
