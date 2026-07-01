@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-// import CryptoJS from 'crypto-js'; // NEW: Cryptography library
 import './App.css';
 
 const translations = {
   en: {
     title: "BTMS: Blockchain Tender Management",
     subtitle: "Shahjalal University of Science & Technology",
+    loginTitle: "Select Your Role to Continue",
+    roleAdmin: "Procuring Entity (Admin)",
+    roleVendor: "Registered Vendor",
+    logout: "Logout",
     tabPublish: "Publish Tender",
     tabBid: "Submit Bid",
     tabEvaluate: "Evaluate & Award",
@@ -15,7 +18,7 @@ const translations = {
     tenderTitle: "Tender Title",
     budget: "Budget (BDT)",
     deadline: "Deadline",
-    uploadDoc: "Upload Document (PDF/Doc)", // NEW
+    uploadDoc: "Upload Document (PDF/Doc)",
     vendorId: "Vendor ID",
     bidAmount: "Bid Amount (BDT)",
     submitPublish: "Publish to Blockchain",
@@ -30,6 +33,10 @@ const translations = {
   bn: {
     title: "BTMS: ব্লকচেইন টেন্ডার ম্যানেজমেন্ট",
     subtitle: "শাহজালাল বিজ্ঞান ও প্রযুক্তি বিশ্ববিদ্যালয়",
+    loginTitle: "অবিরত রাখতে আপনার ভূমিকা নির্বাচন করুন",
+    roleAdmin: "ক্রয়কারী সত্তা (অ্যাডমিন)",
+    roleVendor: "নিবন্ধিত ভেন্ডর",
+    logout: "লগআউট",
     tabPublish: "টেন্ডার প্রকাশ করুন",
     tabBid: "বিড জমা দিন",
     tabEvaluate: "মূল্যায়ন এবং পুরস্কার",
@@ -38,7 +45,7 @@ const translations = {
     tenderTitle: "টেন্ডারের শিরোনাম",
     budget: "বাজেট (BDT)",
     deadline: "শেষ তারিখ",
-    uploadDoc: "ডকুমেন্ট আপলোড করুন (PDF/Doc)", // NEW
+    uploadDoc: "ডকুমেন্ট আপলোড করুন (PDF/Doc)",
     vendorId: "ভেন্ডর আইডি",
     bidAmount: "বিডের পরিমাণ (BDT)",
     submitPublish: "ব্লকচেইনে প্রকাশ করুন",
@@ -54,7 +61,9 @@ const translations = {
 
 function App() {
   const [lang, setLang] = useState('en');
-  const [activeTab, setActiveTab] = useState('publish'); 
+  // NEW: Authentication State
+  const [userRole, setUserRole] = useState(null); // 'admin' or 'vendor'
+  const [activeTab, setActiveTab] = useState('view'); 
   const [status, setStatus] = useState({ message: '', isError: false });
   const [tenders, setTenders] = useState([]);
 
@@ -64,22 +73,17 @@ function App() {
 
   const t = translations[lang];
 
-  // NEW: IPFS Web3 File Upload Function
+  // IPFS Web3 File Upload Function
   const handleFileUpload = async (e, formType) => {
     const file = e.target.files[0];
     if (!file) return;
-
     setStatus({ message: 'Uploading document to global IPFS network...', isError: false });
-
-    // Prepare the file for Pinata
     const formData = new FormData();
     formData.append('file', file);
-
     const pinataOptions = JSON.stringify({ cidVersion: 0 });
     formData.append('pinataOptions', pinataOptions);
 
     try {
-      // Send directly to IPFS via Pinata
       const res = await axios.post("https://api.pinata.cloud/pinning/pinFileToIPFS", formData, {
         maxBodyLength: "Infinity",
         headers: {
@@ -88,18 +92,10 @@ function App() {
           'pinata_secret_api_key': process.env.REACT_APP_PINATA_SECRET_API_KEY,
         }
       });
-
-      const ipfsCID = res.data.IpfsHash; // This is your global Web3 Hash!
-
-      // Update forms with the CID
-      if (formType === 'tender') {
-        setTenderForm({ ...tenderForm, docHash: ipfsCID });
-      } else if (formType === 'bid') {
-        setBidForm({ ...bidForm, docHash: ipfsCID });
-      }
-      
+      const ipfsCID = res.data.IpfsHash; 
+      if (formType === 'tender') setTenderForm({ ...tenderForm, docHash: ipfsCID });
+      else if (formType === 'bid') setBidForm({ ...bidForm, docHash: ipfsCID });
       setStatus({ message: `Secured on IPFS! CID: ${ipfsCID.substring(0, 15)}...`, isError: false });
-
     } catch (error) {
       console.error("IPFS Upload Error:", error);
       setStatus({ message: "Failed to upload to IPFS. Check your Pinata API keys.", isError: true });
@@ -116,15 +112,12 @@ function App() {
   };
 
   useEffect(() => {
-    if (activeTab === 'view') fetchTenders();
-  }, [activeTab]);
+    if (activeTab === 'view' && userRole) fetchTenders();
+  }, [activeTab, userRole]);
 
   const handlePublish = async (e) => {
     e.preventDefault();
-    if (!tenderForm.docHash) {
-      setStatus({ message: "Error: Please upload a document to generate a hash.", isError: true });
-      return;
-    }
+    if (!tenderForm.docHash) return setStatus({ message: "Please upload a document.", isError: true });
     setStatus({ message: 'Processing on ledger...', isError: false });
     try {
       const res = await axios.post('http://localhost:5000/api/tenders', tenderForm);
@@ -136,10 +129,7 @@ function App() {
 
   const handleBid = async (e) => {
     e.preventDefault();
-    if (!bidForm.docHash) {
-      setStatus({ message: "Error: Please upload your bid document to generate a hash.", isError: true });
-      return;
-    }
+    if (!bidForm.docHash) return setStatus({ message: "Please upload your bid document.", isError: true });
     setStatus({ message: 'Processing on ledger...', isError: false });
     try {
       const res = await axios.post('http://localhost:5000/api/bids', bidForm);
@@ -155,28 +145,69 @@ function App() {
     try {
       const res = await axios.post(`http://localhost:5000/api/tenders/${evalForm.tenderId}/evaluate`);
       const tenderRes = await axios.get(`http://localhost:5000/api/tenders/${evalForm.tenderId}`);
-      const winner = tenderRes.data.tender.winnerId;
-      setStatus({ message: `${t.success} ${res.data.message} Winner: ${winner}`, isError: false });
+      setStatus({ message: `${t.success} ${res.data.message} Winner: ${tenderRes.data.tender.winnerId}`, isError: false });
     } catch (err) {
       setStatus({ message: `${t.error} ${err.message}`, isError: true });
     }
   };
 
+  // NEW: Login Screen Render
+  if (!userRole) {
+    return (
+      <div style={{ padding: '60px 40px', fontFamily: 'Arial, sans-serif', maxWidth: '500px', margin: 'auto', textAlign: 'center' }}>
+        <button onClick={() => setLang(lang === 'en' ? 'bn' : 'en')} style={{ position: 'absolute', top: 20, right: 20, padding: '8px' }}>
+          {lang === 'en' ? 'বাংলা' : 'English'}
+        </button>
+        <h2 style={{ color: '#0056b3' }}>{t.title}</h2>
+        <p style={{ color: 'gray', marginBottom: '40px' }}>{t.subtitle}</p>
+        
+        <h3>{t.loginTitle}</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
+          <button onClick={() => { setUserRole('admin'); setActiveTab('view'); }} style={{ padding: '15px', fontSize: '16px', background: '#28a745', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '5px' }}>
+            🏢 {t.roleAdmin}
+          </button>
+          <button onClick={() => { setUserRole('vendor'); setActiveTab('view'); }} style={{ padding: '15px', fontSize: '16px', background: '#17a2b8', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '5px' }}>
+            🤝 {t.roleVendor}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // MAIN DASHBOARD RENDER
   return (
     <div style={{ padding: '40px', fontFamily: 'Arial, sans-serif', maxWidth: '800px', margin: 'auto' }}>
       
-      <button onClick={() => setLang(lang === 'en' ? 'bn' : 'en')} style={{ float: 'right', padding: '8px', cursor: 'pointer' }}>
-        {lang === 'en' ? 'বাংলা' : 'English'}
-      </button>
-
-      <h2>{t.title}</h2>
-      <h4 style={{ color: 'gray', marginTop: '-10px' }}>{t.subtitle}</h4>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h2>{t.title}</h2>
+          <h4 style={{ color: 'gray', marginTop: '-10px' }}>{t.subtitle}</h4>
+          <p style={{ fontWeight: 'bold', color: userRole === 'admin' ? '#28a745' : '#17a2b8' }}>
+            Logged in as: {userRole === 'admin' ? t.roleAdmin : t.roleVendor}
+          </p>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <button onClick={() => setLang(lang === 'en' ? 'bn' : 'en')} style={{ padding: '8px', cursor: 'pointer' }}>{lang === 'en' ? 'বাংলা' : 'English'}</button>
+          <button onClick={() => { setUserRole(null); setStatus({message:''}); }} style={{ padding: '8px', background: '#dc3545', color: 'white', border: 'none', cursor: 'pointer' }}>{t.logout}</button>
+        </div>
+      </div>
       
+      <hr style={{ margin: '20px 0' }}/>
+
+      {/* Tabs - Conditionally Rendered based on Role */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <button onClick={() => {setActiveTab('view'); setStatus({message:''})}} style={{ padding: '10px', flex: 1, background: activeTab === 'view' ? '#0056b3' : '#ccc', color: activeTab === 'view' ? '#fff' : '#000', cursor: 'pointer', minWidth: '120px' }}>{t.tabView}</button>
-        <button onClick={() => {setActiveTab('publish'); setStatus({message:''})}} style={{ padding: '10px', flex: 1, background: activeTab === 'publish' ? '#0056b3' : '#ccc', color: activeTab === 'publish' ? '#fff' : '#000', cursor: 'pointer', minWidth: '120px' }}>{t.tabPublish}</button>
-        <button onClick={() => {setActiveTab('bid'); setStatus({message:''})}} style={{ padding: '10px', flex: 1, background: activeTab === 'bid' ? '#0056b3' : '#ccc', color: activeTab === 'bid' ? '#fff' : '#000', cursor: 'pointer', minWidth: '120px' }}>{t.tabBid}</button>
-        <button onClick={() => {setActiveTab('evaluate'); setStatus({message:''})}} style={{ padding: '10px', flex: 1, background: activeTab === 'evaluate' ? '#0056b3' : '#ccc', color: activeTab === 'evaluate' ? '#fff' : '#000', cursor: 'pointer', minWidth: '120px' }}>{t.tabEvaluate}</button>
+        <button onClick={() => {setActiveTab('view'); setStatus({message:''})}} style={{ padding: '10px', flex: 1, background: activeTab === 'view' ? '#0056b3' : '#ccc', color: activeTab === 'view' ? '#fff' : '#000', cursor: 'pointer' }}>{t.tabView}</button>
+        
+        {userRole === 'admin' && (
+          <>
+            <button onClick={() => {setActiveTab('publish'); setStatus({message:''})}} style={{ padding: '10px', flex: 1, background: activeTab === 'publish' ? '#0056b3' : '#ccc', color: activeTab === 'publish' ? '#fff' : '#000', cursor: 'pointer' }}>{t.tabPublish}</button>
+            <button onClick={() => {setActiveTab('evaluate'); setStatus({message:''})}} style={{ padding: '10px', flex: 1, background: activeTab === 'evaluate' ? '#0056b3' : '#ccc', color: activeTab === 'evaluate' ? '#fff' : '#000', cursor: 'pointer' }}>{t.tabEvaluate}</button>
+          </>
+        )}
+
+        {userRole === 'vendor' && (
+          <button onClick={() => {setActiveTab('bid'); setStatus({message:''})}} style={{ padding: '10px', flex: 1, background: activeTab === 'bid' ? '#0056b3' : '#ccc', color: activeTab === 'bid' ? '#fff' : '#000', cursor: 'pointer' }}>{t.tabBid}</button>
+        )}
       </div>
 
       {activeTab === 'view' && (
@@ -189,7 +220,7 @@ function App() {
                 <th style={{ padding: '12px', textAlign: 'left' }}>{t.tenderTitle}</th>
                 <th style={{ padding: '12px', textAlign: 'left' }}>{t.tableStatus}</th>
                 <th style={{ padding: '12px', textAlign: 'left' }}>{t.tableWinner}</th>
-                <th style={{ padding: '12px', textAlign: 'center' }}>Document</th> {/* NEW Column*/}
+                <th style={{ padding: '12px', textAlign: 'center' }}>Document</th>
               </tr>
             </thead>
             <tbody>
@@ -197,21 +228,10 @@ function App() {
                 <tr key={index} style={{ borderBottom: '1px solid #dee2e6' }}>
                   <td style={{ padding: '12px' }}>{tender.tenderId}</td>
                   <td style={{ padding: '12px' }}>{tender.title}</td>
-                  <td style={{ padding: '12px' }}>
-                    <span style={{ padding: '4px 8px', borderRadius: '4px', background: tender.status === 'Awarded' ? '#d4edda' : '#fff3cd', color: tender.status === 'Awarded' ? '#155724' : '#856404', fontSize: '14px', fontWeight: 'bold' }}>{tender.status}</span>
-                  </td>
+                  <td style={{ padding: '12px' }}><span style={{ padding: '4px 8px', borderRadius: '4px', background: tender.status === 'Awarded' ? '#d4edda' : '#fff3cd', color: tender.status === 'Awarded' ? '#155724' : '#856404', fontSize: '14px', fontWeight: 'bold' }}>{tender.status}</span></td>
                   <td style={{ padding: '12px', fontWeight: 'bold', color: '#0056b3' }}>{tender.winnerId || '-'}</td>
-                  
-                  {/* NEW: Clickable IPFS Gateway Link */}
                   <td style={{ padding: '12px', textAlign: 'center' }}>
-                    <a 
-                      href={`https://gateway.pinata.cloud/ipfs/${tender.docHash}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      style={{ background: '#6c757d', color: 'white', padding: '5px 10px', textDecoration: 'none', borderRadius: '4px', fontSize: '12px' }}
-                    >
-                      View PDF
-                    </a>
+                    <a href={`https://gateway.pinata.cloud/ipfs/${tender.docHash}`} target="_blank" rel="noopener noreferrer" style={{ background: '#6c757d', color: 'white', padding: '5px 10px', textDecoration: 'none', borderRadius: '4px', fontSize: '12px' }}>View PDF</a>
                   </td>
                 </tr>
               ))}
@@ -220,43 +240,37 @@ function App() {
         </div>
       )}
 
-      {activeTab === 'publish' && (
+      {activeTab === 'publish' && userRole === 'admin' && (
         <form onSubmit={handlePublish} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <input placeholder={t.tenderId} onChange={e => setTenderForm({...tenderForm, tenderId: e.target.value})} required style={{ padding: '10px' }} />
           <input placeholder={t.tenderTitle} onChange={e => setTenderForm({...tenderForm, title: e.target.value})} required style={{ padding: '10px' }} />
           <input type="number" placeholder={t.budget} onChange={e => setTenderForm({...tenderForm, budget: e.target.value})} required style={{ padding: '10px' }} />
           <input type="date" onChange={e => setTenderForm({...tenderForm, deadline: e.target.value})} required style={{ padding: '10px' }} />
-          
-          {/* NEW: File Input for Hashing */}
           <div style={{ padding: '10px', border: '1px solid #ccc', background: '#f9f9f9' }}>
             <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t.uploadDoc}:</label>
             <input type="file" onChange={(e) => handleFileUpload(e, 'tender')} required />
-            {tenderForm.docHash && <div style={{ fontSize: '12px', color: 'green', marginTop: '5px' }}>Hash Locked: {tenderForm.docHash.substring(0, 20)}...</div>}
+            {tenderForm.docHash && <div style={{ fontSize: '12px', color: 'green', marginTop: '5px' }}>Secured on IPFS</div>}
           </div>
-
           <button type="submit" style={{ padding: '15px', background: '#28a745', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>{t.submitPublish}</button>
         </form>
       )}
 
-      {activeTab === 'bid' && (
+      {activeTab === 'bid' && userRole === 'vendor' && (
         <form onSubmit={handleBid} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <input placeholder="Bid ID (e.g. BID-001)" onChange={e => setBidForm({...bidForm, bidId: e.target.value})} required style={{ padding: '10px' }} />
           <input placeholder={t.tenderId} onChange={e => setBidForm({...bidForm, tenderId: e.target.value})} required style={{ padding: '10px' }} />
           <input placeholder={t.vendorId} onChange={e => setBidForm({...bidForm, vendorId: e.target.value})} required style={{ padding: '10px' }} />
           <input type="number" placeholder={t.bidAmount} onChange={e => setBidForm({...bidForm, bidAmount: e.target.value})} required style={{ padding: '10px' }} />
-          
-          {/* NEW: File Input for Hashing */}
           <div style={{ padding: '10px', border: '1px solid #ccc', background: '#f9f9f9' }}>
             <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>{t.uploadDoc}:</label>
             <input type="file" onChange={(e) => handleFileUpload(e, 'bid')} required />
-            {bidForm.docHash && <div style={{ fontSize: '12px', color: 'green', marginTop: '5px' }}>Hash Locked: {bidForm.docHash.substring(0, 20)}...</div>}
+            {bidForm.docHash && <div style={{ fontSize: '12px', color: 'green', marginTop: '5px' }}>Secured on IPFS</div>}
           </div>
-
           <button type="submit" style={{ padding: '15px', background: '#17a2b8', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>{t.submitBid}</button>
         </form>
       )}
 
-      {activeTab === 'evaluate' && (
+      {activeTab === 'evaluate' && userRole === 'admin' && (
         <form onSubmit={handleEvaluate} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <input placeholder={t.tenderId} onChange={e => setEvalForm({tenderId: e.target.value})} required style={{ padding: '10px' }} />
           <button type="submit" style={{ padding: '15px', background: '#dc3545', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>{t.submitEvaluate}</button>
